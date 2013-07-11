@@ -21,10 +21,13 @@ References:
    - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
 */
 
+var util = require('util');
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
+var HTMLFILE_DEFAULT_LOCAL = "index.html.local";
 var CHECKSFILE_DEFAULT = "checks.json";
 
 var assertFileExists = function(infile) {
@@ -61,14 +64,37 @@ var clone = function(fn) {
     return fn.bind({});
 };
 
+var buildfn = function(localIndexFile, checksFile) {
+    var response2file = function(result, response) {
+        if (result instanceof Error) {
+            console.error('Error: ' + util.format(response.message));
+        } else {
+            console.error("Wrote %s", localIndexFile);
+            fs.writeFileSync(localIndexFile, result);
+            processChecks(localIndexFile, checksFile)
+        }
+    };
+    return response2file;
+};
+
+var processChecks = function(indexFile, checksFile) {
+    var checkJson = checkHtmlFile(indexFile, checksFile);	
+    var outJson = JSON.stringify(checkJson, null, 4);
+    console.log(outJson);	
+}
+
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+        .option('-u, --url <html_url>', 'URL to index.html')
+       .parse(process.argv);
+    if (program.url == null) {
+	   processChecks(program.file, program.checks);
+    } else {
+	   var response2file = buildfn(HTMLFILE_DEFAULT_LOCAL, program.checks);
+	   rest.get(program.url).on('complete', response2file);	   	     
+    };
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
